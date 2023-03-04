@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    tools {nodejs "nodejs"}
+
+    stages {
+        stage('CLEAN') {
+            steps {
+               sh './gradlew clean'
+            }
+        }
+        stage('TEST') {
+            steps {
+                sh './gradlew testCoverage'
+            }
+        }
+        stage('BUILD-BACK') {
+            steps {
+                sh './gradlew build -x test'
+            }
+        }
+        stage('BUILD-FRONT') {
+            steps {
+                sh 'npm install --prefix front/city-talk-ui/'
+                sh 'npm run-script build --prefix front/city-talk-ui/'
+            }
+        }
+        stage('DOCKER-BUILD-FRONT') {
+            steps {
+                sh 'docker build -t city-talks-front ./front/city-talk-ui'
+            }
+        }
+        stage('DOCKER-BUILD-BACK') {
+            steps {
+                sh 'docker build -t city-talk .'
+            }
+        }
+        stage('DOCKER-RUN') {
+            steps {
+                sh 'docker-compose down --remove-orphans'
+                sh 'docker-compose build'
+                sh 'docker-compose up -d -V'
+            }
+        }
+    }
+	post {
+	    always {
+	        archiveArtifacts artifacts: '**/*.jar',
+		    onlyIfSuccessful: true
+		    sh (
+		    """
+		    curl -s -X
+			POST https://api.telegram.org/bot962297332:AAGBqCGa979lxE1Cf5m9_xwTUIf-wQISwLY/sendMessage -d chat_id=392446897 -d
+			text=${currentBuild.projectName}%20Build#${currentBuild.number}:%20${currentBuild.currentResult}%20${currentBuild.absoluteUrl}
+		    """
+		    )
+	    }
+	}
+}
+
